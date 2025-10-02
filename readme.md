@@ -12,4 +12,3 @@ Quick dev starter to capture a short clip from OBS (Replay Buffer or recording),
 ## Install
 ```bash
 npm install
-# if you didn't already: npm i googleapis express obs-websocket-js dotenv

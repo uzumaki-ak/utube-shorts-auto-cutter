@@ -1,38 +1,4 @@
-// // obs_control/obs_save_replay.js
-// const OBSWebSocket = require("obs-websocket-js").default;
-// require("dotenv").config();
 
-// const obs = new OBSWebSocket();
-
-// async function saveReplay() {
-//   const host = process.env.OBS_WEBSOCKET_HOST || "localhost:4455";
-//   const password = process.env.OBS_WEBSOCKET_PASSWORD || "";
-//   try {
-//     console.log("Connecting to OBS at", host);
-//     await obs.connect({ address: host, password });
-//     // Start replay buffer if not running (safe to call)
-//     try {
-//       await obs.call("StartReplayBuffer");
-//     } catch (e) {
-//       /* ignore if already running */
-//     }
-//     await obs.call("SaveReplayBuffer");
-//     console.log("SaveReplayBuffer called");
-//     await obs.disconnect();
-//   } catch (err) {
-//     console.error("OBS control error", err);
-//     try {
-//       await obs.disconnect();
-//     } catch (e) {}
-//     process.exit(1);
-//   }
-// }
-
-// if (require.main === module) {
-//   saveReplay();
-// }
-
-// module.exports = { saveReplay };
 
 //!new
 const OBSWebSocket = require("obs-websocket-js").default;
