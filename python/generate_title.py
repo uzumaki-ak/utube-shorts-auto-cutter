@@ -6,7 +6,7 @@ import os
 def generate_with_euri(transcript, api_key):
     """Generate title and hashtags using Euri API"""
     try:
-        print("[Euri] Generating title with Euri API...")
+        print("[Euri] Generating title with Euri API...", file=sys.stderr)
         url = "https://api.euron.one/api/v1/euri/chat/completions"
         headers = {
             "Content-Type": "application/json",
@@ -43,27 +43,27 @@ def generate_with_euri(transcript, api_key):
             content = result["choices"][0]["message"]["content"]
             
             try:
-                print("[Euri] Title generation successful")
+                print("[Euri] Title generation successful", file=sys.stderr)
                 return json.loads(content)
             except:
-                print("[Euri] JSON parsing failed, using fallback")
+                print("[Euri] JSON parsing failed, using fallback", file=sys.stderr)
                 return {
                     "title": "Amazing Live Moment",
                     "hashtags": "#shorts #live #viral #trending #fyp",
                     "description": "Check out this awesome moment from the live stream!"
                 }
         else:
-            print(f"[Euri] API error: {response.status_code}")
+            print(f"[Euri] API error: {response.status_code}", file=sys.stderr)
             return None
             
     except Exception as e:
-        print(f"[Euri] API failed: {e}")
+        print(f"[Euri] API failed: {e}", file=sys.stderr)
         return None
 
 def generate_with_gemini(transcript, api_key):
     """Fallback to Gemini API"""
     try:
-        print("[Gemini] Trying Gemini API...")
+        print("[Gemini] Trying Gemini API...", file=sys.stderr)
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-pro')
@@ -74,12 +74,12 @@ def generate_with_gemini(transcript, api_key):
         import re
         json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
         if json_match:
-            print("[Gemini] Title generation successful")
+            print("[Gemini] Title generation successful", file=sys.stderr)
             return json.loads(json_match.group())
         else:
             return None
     except Exception as e:
-        print(f"[Gemini] API failed: {e}")
+        print(f"[Gemini] API failed: {e}", file=sys.stderr)
         return None
 
 def generate_metadata(transcript, euri_api_key, gemini_api_key=None):
@@ -97,7 +97,7 @@ def generate_metadata(transcript, euri_api_key, gemini_api_key=None):
             return result
             
     # Final fallback
-    print("[Title] Using fallback title")
+    print("[Title] Using fallback title", file=sys.stderr)
     return {
         "title": "Live Stream Highlight",
         "hashtags": "#shorts #live #clip #viral #trending",
@@ -106,7 +106,7 @@ def generate_metadata(transcript, euri_api_key, gemini_api_key=None):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python generate_title.py <transcript> <euri_api_key> [gemini_api_key]")
+        print("Usage: python generate_title.py <transcript> <euri_api_key> [gemini_api_key]", file=sys.stderr)
         sys.exit(1)
         
     transcript = sys.argv[1]
@@ -114,4 +114,6 @@ if __name__ == "__main__":
     gemini_api_key = sys.argv[3] if len(sys.argv) > 3 else None
     
     result = generate_metadata(transcript, euri_api_key, gemini_api_key)
+    
+    # ONLY PRINT JSON TO STDOUT - NO LOGS!
     print(json.dumps(result, ensure_ascii=False))

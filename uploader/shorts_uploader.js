@@ -36,7 +36,7 @@ const youtube = oauth2Client
 const WORK_DIR = path.join(ROOT, "tmp");
 if (!fs.existsSync(WORK_DIR)) fs.mkdirSync(WORK_DIR, { recursive: true });
 
-// RUNDING PY SCRPT
+// RUNNING PYTHON SCRIPT
 function runPythonScript(scriptName, args) {
   return new Promise((resolve, reject) => {
     const pythonScript = path.join(__dirname, "..", "python", scriptName);
@@ -48,50 +48,78 @@ function runPythonScript(scriptName, args) {
     pythonProcess.stdout.on("data", (data) => {
       const output = data.toString();
       stdout += output;
-      // LogGING  Python output for debugging
-      if (output.trim() && !output.startsWith("{") && !output.startsWith("[")) {
-        console.log(`[Python] ${output.trim()}`);
-      }
     });
 
     pythonProcess.stderr.on("data", (data) => {
       const error = data.toString();
       stderr += error;
-      console.error(`[Python Error] ${error.trim()}`);
+      // Log Python stderr (logs) for debugging
+      if (error.trim()) {
+        console.log(`[Python] ${error.trim()}`);
+      }
     });
 
     pythonProcess.on("close", (code) => {
       if (code === 0) {
         try {
-          if (stdout.trim()) {
-            resolve(JSON.parse(stdout));
+          // Clean stdout - remove any non-JSON content
+          const cleanStdout = stdout.trim();
+          if (cleanStdout) {
+            const jsonMatch = cleanStdout.match(/\{.*\}|\[.*\]/s);
+            if (jsonMatch) {
+              resolve(JSON.parse(jsonMatch[0]));
+            } else {
+              console.error(`[Python] No JSON found in output: ${cleanStdout}`);
+              resolve({});
+            }
           } else {
             resolve({});
           }
         } catch (e) {
           console.error(`[Python] JSON parse failed: ${e.message}`);
+          console.error(`[Python] Raw stdout: ${stdout}`);
           resolve({});
         }
       } else {
-        console.error(`[Python] Script failed with code ${code}: ${stderr}`);
+        console.error(`[Python] Script failed with code ${code}`);
         reject(new Error(`Python script failed: ${stderr}`));
       }
     });
   });
 }
-//  TRANSCRIBE VIDEO WITH WHISPER
+
+// TRANSCRIBE VIDEO WITH WHISPER
+// TRANSCRIBE VIDEO WITH ELEVENLABS (FAST) OR LOCAL WHISPER (FALLBACK)
 async function transcribeVideo(videoPath) {
   try {
-    console.log("🎯 Transcribing video with Whisper...");
+    // Try ElevenLabs Speech-to-Text first (if key exists)
+    if (process.env.ELEVENLABS_API_KEY) {
+      console.log("🎯 Transcribing with ElevenLabs Speech-to-Text...");
+      try {
+        const result = await runPythonScript("transcribe_elevenlabs.py", [
+          videoPath,
+          process.env.ELEVENLABS_API_KEY,
+        ]);
+        if (result && result.transcript) {
+          console.log("✅ ElevenLabs transcription successful");
+          return result;
+        }
+      } catch (error) {
+        console.log("⚠️ ElevenLabs failed, falling back to local Whisper...");
+      }
+    }
+
+    // Fallback to local Whisper
+    console.log("🎯 Transcribing with local Whisper...");
     const result = await runPythonScript("transcribe.py", [videoPath]);
     return result;
   } catch (error) {
-    console.error("❌ Transcription failed:", error.message);
+    console.error("❌ All transcription methods failed:", error.message);
     return null;
   }
 }
 
-//  GENERATE AI TITLE
+// GENERATE AI TITLE
 async function generateAITitle(transcript) {
   try {
     console.log("🤖 Generating AI title and hashtags...");
@@ -108,22 +136,22 @@ async function generateAITitle(transcript) {
   }
 }
 
-//  GENERATE META WITH AI
+// GENERATE META WITH AI
 async function generateMetaWithAI(videoPath, context) {
   try {
     // Step 1: Transcribe video
+    console.log("🎯 Transcribing video with Whisper...");
     const transcription = await transcribeVideo(videoPath);
 
     if (!transcription || !transcription.transcript) {
-      throw new Error("Transcription failed");
+      console.log("❌ Transcription failed or empty, using fallback");
+      return generateMetaFallback(context);
     }
 
-    console.log(
-      "📝 Transcript:",
-      transcription.transcript.substring(0, 200) + "..."
-    );
+    console.log("📝 Transcript length:", transcription.transcript.length);
 
     // Step 2: Generate AI title
+    console.log("🤖 Generating AI title and hashtags...");
     const aiData = await generateAITitle(transcription.transcript);
 
     const title = aiData?.title || `🎬 ${context}`;
@@ -139,7 +167,7 @@ async function generateMetaWithAI(videoPath, context) {
         .split(" ")
         .filter((tag) => tag.length > 0),
       transcript: transcription.transcript,
-      captions: transcription.captions,
+      captions: transcription.captions || [],
     };
   } catch (error) {
     console.error(
@@ -164,48 +192,88 @@ function generateMetaFallback(context) {
   return { title, desc, tags };
 }
 
-//  ZOOMED CROP FOR SHORTS (9:16 with zoom effect)
+// ZOOMED CROP FOR SHORTS (9:16 with zoom effect)
 function convertToShorts(inputPath, captions = null) {
   const shortPath = path.join(WORK_DIR, `short_${Date.now()}.mp4`);
 
+  // Verify input file exists
+  if (!fs.existsSync(inputPath)) {
+    throw new Error(`Input file not found: ${inputPath}`);
+  }
+
+  const stats = fs.statSync(inputPath);
+  console.log(
+    `📊 Input file size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`
+  );
+
   let filterComplex = "";
+  let srtPath = null;
 
   if (captions && captions.length > 0) {
     // Create SRT file for captions
-    const srtPath = path.join(WORK_DIR, `captions_${Date.now()}.srt`);
+    srtPath = path.join(WORK_DIR, `captions_${Date.now()}.srt`);
     const srtContent = generateSRT(captions);
     fs.writeFileSync(srtPath, srtContent);
 
-    //  ZOOM + CROP + CAPTIONS
-    filterComplex = `crop=ih*9/16:ih:iw/2-ih*9/32:0,scale=1080:1920,subtitles='${srtPath}':force_style='Fontname=Arial,Fontsize=24,PrimaryColour=&H00FFFF,OutlineColour=&H000000,Outline=1,Bold=1'`;
+    // Escape Windows paths for FFmpeg
+    const escapedSrtPath = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:");
+
+    // CENTER CAPTIONS with better styling
+    filterComplex = `crop=ih*9/16:ih:iw/2-ih*9/32:0,scale=1080:1920,subtitles='${escapedSrtPath}':force_style='Fontname=Arial,Fontsize=28,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,Outline=2,Bold=1,Alignment=2,MarginV=650'`;
+    // Alignment=2 = center, MarginV=650 = vertical position (higher = lower on screen, 650 is middle)
   } else {
-    //  ZOOM + CROP only
+    // ZOOM + CROP only
     filterComplex = `crop=ih*9/16:ih:iw/2-ih*9/32:0,scale=1080:1920`;
   }
 
-  const cmd = `ffmpeg -y -i "${inputPath}" -vf "${filterComplex}" -c:a aac -b:a 128k -movflags +faststart "${shortPath}"`;
+  const cmd = `ffmpeg -y -i "${inputPath}" -vf "${filterComplex}" -c:v libx264 -preset medium -crf 23 -c:a aac -b:a 128k -movflags +faststart "${shortPath}"`;
 
   console.log("🎯 Converting to Shorts format with zoom effect...");
   console.log("Running:", cmd);
 
   try {
-    execSync(cmd, { stdio: "inherit" });
+    // Increase buffer size for large outputs
+    execSync(cmd, {
+      stdio: "inherit",
+      maxBuffer: 50 * 1024 * 1024, // 50MB buffer
+    });
+
+    // Verify output exists
+    if (!fs.existsSync(shortPath)) {
+      throw new Error("FFmpeg completed but output file not found");
+    }
+
+    const outStats = fs.statSync(shortPath);
+    console.log(
+      `✅ Output file created: ${(outStats.size / 1024 / 1024).toFixed(2)} MB`
+    );
 
     // Clean up SRT file
-    if (captions) {
+    if (srtPath) {
       try {
         fs.unlinkSync(srtPath);
-      } catch (e) {}
+      } catch (e) {
+        console.warn("⚠️ Could not delete SRT file:", e.message);
+      }
     }
 
     return shortPath;
   } catch (error) {
     console.error("❌ Shorts conversion failed:", error.message);
+    console.error("FFmpeg exit code:", error.status);
+
+    // Clean up partial output
+    if (fs.existsSync(shortPath)) {
+      try {
+        fs.unlinkSync(shortPath);
+      } catch (e) {}
+    }
+
     throw error;
   }
 }
 
-//  GENERATE SRT FOR CAPTIONS
+// GENERATE SRT FOR CAPTIONS
 function generateSRT(captions) {
   let srtContent = "";
 
@@ -281,7 +349,7 @@ async function uploadToYouTube(filePath, meta, isShort = false) {
   return res.data;
 }
 
-//  UPDATED MAIN HANDLER WITH AI
+// UPDATED MAIN HANDLER WITH AI
 async function handleShorts({
   clipPath = null,
   obsFilePath = null,
@@ -298,13 +366,13 @@ async function handleShorts({
       finalClipPath = cutLastSecondsFromFile(obsFilePath, secs || undefined);
     }
 
-    //  GENERATE AI METADATA FIRST (needs the clip path)
-    console.log(" Generating AI metadata...");
+    // GENERATE AI METADATA FIRST (needs the clip path)
+    console.log("🤖 Generating AI metadata...");
     const meta = await generateMetaWithAI(finalClipPath, context);
 
     // Convert to Shorts format if requested
     if (makeShort) {
-      console.log(" Converting to YouTube Shorts format...");
+      console.log("📱 Converting to YouTube Shorts format...");
       const shortPath = convertToShorts(finalClipPath, meta.captions);
 
       // Delete original clip, keep Shorts version
