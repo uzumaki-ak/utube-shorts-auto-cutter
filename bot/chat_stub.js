@@ -1,4 +1,4 @@
-// bot/chat_stub.js
+
 // This file is a simple stub showing how to call handleShorts when you detect a !shorts command
 const { handleShorts } = require("../uploader/shorts_uploader");
 const { saveReplay } = require("../obs_control/obs_save_replay");

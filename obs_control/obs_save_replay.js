@@ -1,6 +1,3 @@
-
-
-//!new
 const OBSWebSocket = require("obs-websocket-js").default;
 require("dotenv").config();
 
@@ -13,32 +10,29 @@ async function saveReplay() {
   try {
     console.log(`🔌 Connecting to OBS at ${host}...`);
 
-  
-    await obs.connect({
-      address: `ws://${host}`,
-      password: password,
-    });
+    // ✅ Simple format: URL as first param, password as second
+    await obs.connect(`ws://${host}`, password);
 
-    console.log(" Connected to OBS");
+    console.log("✅ Connected to OBS");
 
-    // stat reply bufer if n't running
+    // Start replay buffer if not already running
     try {
       await obs.call("StartReplayBuffer");
-      console.log(" Started replay buffer");
+      console.log("▶️ Started replay buffer");
     } catch (e) {
       console.log("ℹ Replay buffer already running or not supported");
     }
 
-    // sving  replay
+    // Save replay
     await obs.call("SaveReplayBuffer");
     console.log(
       "💾 SaveReplayBuffer called - OBS should save file to recording path"
     );
 
     await obs.disconnect();
-    console.log(" Replay saved successfully");
+    console.log("✅ Replay saved successfully");
   } catch (err) {
-    console.error(" OBS control error:", err.message);
+    console.error("❌ OBS control error:", err);
     try {
       await obs.disconnect();
     } catch (e) {}
