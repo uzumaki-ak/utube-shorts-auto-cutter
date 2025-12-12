@@ -1,8 +1,9 @@
-node_modules/
+node_modules/
+token.json
+credentials.json
+tmp/
+.DS_Store
+*.mp4
+*.mkv
+config.bat
 .env
-token.json
-credentials.json
-tmp/
-.DS_Store
-*.mp4
-*.mkv
